@@ -170,3 +170,73 @@ python scripts/07_plot_tf_activity.py
 | `tf_barplot_antigen_presentation_mhc.png` | `results/figures/tf_activity/` |
 | `tf_barplot_cytotoxic_nk_like.png` | `results/figures/tf_activity/` |
 | `tf_barplot_monocyte_activation.png` | `results/figures/tf_activity/` |
+
+## Phase 4 — ATAC motif enrichment and cross-modal TF validation
+
+Phase 4 uses the multiome ATAC data to independently validate the Phase 3 TF-activity
+proxies.  `08_motif_enrichment_atac.R` scans ATAC peaks for seven JASPAR2020 motifs
+covering the five TF-activity program axes, runs chromVAR to compute per-cell deviation
+z-scores, and writes flat-file summaries.  `09_compare_rna_atac_tf.py` collapses motif
+deviations to program level, correlates them against the Phase 3 RNA proxy scores across
+cell types, and produces scatter plots and an ATAC heatmap.
+
+### Run
+
+```bash
+Rscript scripts/08_motif_enrichment_atac.R
+python  scripts/09_compare_rna_atac_tf.py
+```
+
+### Generated outputs
+
+| File | Location |
+|------|----------|
+| `atac_motif_deviations.csv` | `results/regulons/` |
+| `atac_motif_by_celltype.csv` | `results/regulons/` |
+| `atac_motif_summary.md` | `results/regulons/` |
+| `tf_rna_atac_correlation.csv` | `results/comparison/` |
+| `tf_heatmap_atac_celltype.png` | `results/figures/tf_activity/` |
+| `tf_rna_atac_scatter_<program>.png` × 5 | `results/figures/tf_activity/` |
+
+## Phase 5 — Monocyte pseudotime trajectory
+
+Phase 5 fits a Slingshot pseudotime trajectory over the monocyte-lineage cells
+(CD14+ Monocytes and FCGR3A+ Monocytes) using the existing WNN UMAP embedding.
+The outputs are structured for downstream cell-level joins with Phase 4 ATAC motif
+deviations and population-level annotation from Phase 3 RNA program scores.
+
+`10_pseudotime_subset.R` subsets the WNN object to monocyte cells, runs Slingshot
+with `start.clus = "CD14+ Monocytes"` and `end.clus = "FCGR3A+ Monocytes"`, and
+exports min-max-scaled pseudotime alongside a pre-joined RNA population table.
+
+`11_plot_pseudotime.py` reads the flat CSV outputs from script 10 and the Phase 4
+ATAC motif deviations to produce up to four figures (UMAP, ATAC motif trends,
+RNA population reference bar chart, and an optional per-cell RNA trend panel).
+
+> **RNA data-availability note:** Phase 3 RNA program scores originate from the
+> Kang et al. dataset (different barcodes from the multiome cells).  Output 2
+> therefore annotates each multiome cell with the population-level mean ± std for
+> its broad label rather than per-cell measurements.  If per-cell RNA program scores
+> for the multiome cells are generated in a future phase, they can be joined to
+> `pseudotime_monocyte_cells.csv` on `cell_id`.
+
+### Run
+
+```bash
+Rscript scripts/10_pseudotime_subset.R
+python  scripts/11_plot_pseudotime.py
+# Optional: supply per-cell RNA scores to enable Figure 4
+# python scripts/11_plot_pseudotime.py --rna-cell-scores path/to/rna_cell_scores.csv
+```
+
+### Generated outputs
+
+| File | Location | Contents |
+|------|----------|----------|
+| `pseudotime_monocyte_cells.csv` | `results/dynamics/` | Per-cell pseudotime; join key for ATAC (`cell_id`) |
+| `pseudotime_monocyte_rna_population.csv` | `results/dynamics/` | Per-cell × RNA population means (if Phase 3 file present) |
+| `pseudotime_summary.md` | `results/dynamics/` | Run report and downstream join-status table |
+| `pseudotime_umap_monocyte.png` | `results/figures/dynamics/` | UMAP coloured by pseudotime (left) and broad label (right) |
+| `pseudotime_atac_motif_trends.png` | `results/figures/dynamics/` | Per-motif chromVAR deviation z-score vs pseudotime (cell-level ATAC) |
+| `pseudotime_rna_population_reference.png` | `results/figures/dynamics/` | RNA program scores by broad label (Kang et al. reference; no pseudotime axis) |
+| `pseudotime_rna_cell_trends.png` | `results/figures/dynamics/` | Per-cell RNA program trends vs pseudotime (only if `--rna-cell-scores` supplied) |
