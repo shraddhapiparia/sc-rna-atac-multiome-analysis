@@ -1,0 +1,27 @@
+# macOS
+.DS_Store
+
+# R
+.Rhistory
+.RData
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# environments
+.venv/
+env/
+venv/
+
+# generated outputs / large files
+data/raw/
+data/processed/
+results/
+figures/
+
+# keep empty folders if needed
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!results/.gitkeep
