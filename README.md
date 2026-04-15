@@ -18,7 +18,7 @@ This repository reuses RNA-only baseline outputs from `sc-cell-state-benchmark`
 as the reference point for multimodal and regulatory comparisons.
 
 ## Repository structure
-
+```
 sc-rna-atac-regulon-benchmark/
 ├── README.md
 ├── environment.yml
@@ -40,7 +40,7 @@ sc-rna-atac-regulon-benchmark/
 ├── scripts/
 ├── src/sc_rna_atac_regulon_benchmark/
 └── tests/
-
+```
 ## Repo progression
 
 1. RNA-only baseline import
