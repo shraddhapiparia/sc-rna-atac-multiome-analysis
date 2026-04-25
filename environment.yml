@@ -1,0 +1,79 @@
+# Conda environment for sc-rna-atac-regulon-benchmark
+#
+# Strategy: heavy compiled packages (Seurat, Signac, all Bioconductor packages)
+# are installed via conda (conda-forge + bioconda) to avoid source-build
+# failures.  Remaining R packages that are absent from conda are installed as
+# a fallback by scripts/install_r_deps.R.
+#
+# R 4.4 is required.  R 4.3 is NOT recommended: dependency conflicts were
+# observed between chromVAR, sparseMatrixStats, and BSgenome under R 4.3.
+#
+# Create (mamba recommended — much faster solver):
+#   mamba env create -f environment.yml
+#   conda env create -f environment.yml      # slower alternative
+#
+# Activate: conda activate sc-rna-atac
+# Update:   mamba env update -f environment.yml --prune
+
+name: sc-rna-atac
+
+channels:
+  - conda-forge   # R packages and most Python packages
+  - bioconda      # Bioconductor packages
+  - defaults
+
+dependencies:
+  # ── Python ──────────────────────────────────────────────────────────────────
+  - python=3.11
+  - numpy>=1.24,<2.0      # <2.0 avoids breaking API changes in numpy 2
+  - pandas>=2.0
+  - matplotlib>=3.7
+  - seaborn>=0.12
+  - scipy>=1.11           # stats.pearsonr used in 09_compare_rna_atac_tf.py
+  - statsmodels>=0.14     # lowess smoother used in 11_plot_pseudotime.py
+
+  # ── R interpreter ───────────────────────────────────────────────────────────
+  - r-base=4.4            # Bioconductor 3.20 is the matching release for R 4.4
+
+  # ── R: CRAN packages (conda-forge) ──────────────────────────────────────────
+  - r-seurat              # scRNA-seq analysis (scripts 03, 04)
+  - r-signac              # ATAC-seq layer on Seurat (scripts 03, 04, 08)
+  - r-sctransform         # variance-stabilising normalisation; required by SCTransform()
+  - r-future              # parallel backend for Seurat + FindAllMarkers (scripts 03, 04)
+  - r-optparse            # CLI argument parsing (all R scripts)
+  - r-ggplot2             # plotting (script 03b)
+  - r-patchwork           # multi-panel figure layout (script 03b)
+  - r-sf                  # spatial features; required by Signac coordinate operations
+  - r-s2                  # spherical geometry library; required by r-sf
+  - r-ragg                # fast graphics device; resolves font-rendering conflicts
+  - r-biocmanager         # BiocManager::install() fallback for any missing Bioc packages
+  - r-renv                # project-local package locking (renv::snapshot / restore)
+  
+  # ── R: Bioconductor infrastructure (bioconda) ────────────────────────────────
+  # These have compiled C/Fortran extensions; installing via bioconda avoids
+  # the source-build failures that occur when using BiocManager on some systems.
+  - bioconductor-genomicranges              # GRanges intervals; used in scripts 03, 08
+  - bioconductor-genomeinfodb               # seqlevels / genome metadata; scripts 03, 08
+  - bioconductor-biocparallel               # parallel backend for chromVAR (script 08)
+  - bioconductor-sparsematrixstats          # sparse matrix stats; transitive dep of chromVAR
+  - bioconductor-rsamtools                  # BAM/CRAM I/O; transitive dep of Signac + rtracklayer
+  - bioconductor-genomicalignments          # CIGAR parsing; transitive dep of rtracklayer + Signac
+  - bioconductor-rtracklayer                # BED/bigWig I/O; transitive dep of Signac
+  - bioconductor-genomicfeatures            # gene model manipulation; transitive dep of ensembldb
+  - bioconductor-bsgenome                   # BSgenome base classes; transitive dep of BSgenome.*
+  - bioconductor-ensembldb                  # Ensembl annotation base; transitive dep of EnsDb.*
+
+  # ── R: Bioconductor analysis packages (bioconda) ─────────────────────────────
+  - bioconductor-chromvar                   # per-cell TF motif deviation z-scores (script 08)
+  - bioconductor-tfbstools                  # motif scanning utilities (script 08)
+  - bioconductor-jaspar2020                 # JASPAR 2020 motif database (script 08)
+  - bioconductor-singlecellexperiment       # Bioconductor container used by slingshot (script 10)
+  # bioconductor-slingshot is NOT listed here: r-princurve (its dependency) is unavailable
+  # on osx-arm64 in bioconda, causing a solver failure.  slingshot is installed automatically
+  # by scripts/install_r_deps.R via BiocManager fallback.  See README Step 2.
+
+  # ── R: large genome annotation packages (bioconda) ───────────────────────────
+  # Each downloads ~900 MB the first time; conda caches the tarballs so
+  # subsequent env creation is fast.
+  - bioconductor-bsgenome.hsapiens.ucsc.hg38  # hg38 genome sequence for motif scanning (script 08)
+  - bioconductor-ensdb.hsapiens.v86            # hg38 Ensembl v86 gene annotations (script 03)

@@ -25,3 +25,7 @@ figures/
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 !results/.gitkeep
+renv/
+*.log
+data/
+.Rprofile

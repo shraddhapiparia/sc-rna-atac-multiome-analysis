@@ -1,0 +1,9 @@
+# Directories renv should not scan for R package dependencies.
+# renv only needs to scan scripts/ and src/ — data/, results/, and the
+# Python source tree are irrelevant to R package discovery.
+
+data/
+results/
+docs/
+*.py
+*.ipynb

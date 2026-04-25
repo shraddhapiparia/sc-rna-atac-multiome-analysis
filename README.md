@@ -41,6 +41,170 @@ sc-rna-atac-regulon-benchmark/
 ├── src/sc_rna_atac_regulon_benchmark/
 └── tests/
 ```
+
+## Environment setup
+
+This project uses **Python 3.11** and **R 4.4** installed through conda
+(conda-forge + bioconda). All compiled R packages — including the full
+Seurat/Signac/chromVAR/Slingshot/Bioconductor stack — are resolved by conda
+to avoid source-build failures.
+
+> **R 4.3 is not supported.** Dependency conflicts were observed between
+> chromVAR, sparseMatrixStats, and BSgenome packages under R 4.3. Use R 4.4
+> as specified in `environment.yml`.
+
+### Prerequisites
+
+- [Miniconda or Anaconda](https://docs.conda.io/en/latest/miniconda.html)
+- **mamba** (strongly recommended — the solver is dramatically faster for this
+  large environment):
+  ```bash
+  conda install -n base -c conda-forge mamba
+  ```
+- Git
+
+### Step 1 — Create the conda environment
+
+The environment installs Python, R 4.4, and all required R packages
+(Seurat, Signac, chromVAR, Slingshot, JASPAR2020, annotation packages, etc.)
+in a single solve. The first creation downloads ~2–4 GB of packages; conda
+caches tarballs so subsequent creation is fast.
+
+```bash
+# With mamba (recommended — ~5 min)
+mamba env create -f environment.yml
+
+# With conda (slower — 20–40 min)
+conda env create -f environment.yml
+
+conda activate sc-rna-atac
+```
+
+To update an existing environment after pulling changes:
+
+```bash
+mamba env update -f environment.yml --prune
+```
+
+### Step 2 — Verify R packages
+
+Confirm every R package loads cleanly. The script will attempt a BiocManager
+fallback install for anything conda failed to provide.
+
+```bash
+Rscript scripts/install_r_deps.R
+```
+
+All lines should show a version number. Any `MISSING` line means conda did not
+install that package — re-run `mamba env update -f environment.yml --prune`
+and try again before reaching for the BiocManager fallback.
+
+> **Note on `slingshot`:** `bioconductor-slingshot` is intentionally absent from
+> `environment.yml`.  Its dependency `r-princurve` is not available for
+> `osx-arm64` in the current bioconda build, which causes the conda solver to
+> fail.  `install_r_deps.R` detects `slingshot` as missing and installs it
+> automatically via BiocManager — no manual action is required.
+
+### Step 3 — Lock R package versions (renv)
+
+After verification passes, generate `renv.lock` to record exact installed
+versions. Commit this file to the repository so collaborators can reproduce
+the exact package state.
+
+```r
+# Run inside R (with the conda env active)
+library(renv)
+renv::init(bare = TRUE)   # initialise renv; does not re-install packages
+renv::snapshot()          # write renv.lock
+```
+
+The `renv.lock` format is JSON. Example for two packages:
+
+```json
+{
+  "R": { "Version": "4.4.1" },
+  "Packages": {
+    "Seurat": {
+      "Package": "Seurat",
+      "Version": "5.1.0",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "Signac": {
+      "Package": "Signac",
+      "Version": "1.13.0",
+      "Source": "Repository",
+      "Repository": "Bioconductor"
+    }
+  }
+}
+```
+
+To restore from `renv.lock` on a new machine after Step 1:
+
+```bash
+Rscript -e "renv::restore()"
+```
+
+### Step 4 — Verify the complete setup
+
+```bash
+# Python packages
+python -c "import pandas, numpy, matplotlib, seaborn, scipy, statsmodels; print('Python OK')"
+
+# R packages (runs install_r_deps.R, exits 0 if all present)
+Rscript scripts/install_r_deps.R
+```
+
+### Running the pipeline
+
+Activate the conda environment before running any script. Scripts are numbered
+and must be run in order.
+
+```bash
+conda activate sc-rna-atac
+
+# Phase 1 — RNA baseline import (Python)
+python scripts/01_import_rna_baseline.py
+
+# Phase 2 — Download/validate raw data (R)
+Rscript scripts/02_download_or_prepare_multiome.R --download
+
+# Phase 2 — Preprocess multiome (R, ~5–15 min)
+Rscript scripts/03_preprocess_multiome.R
+
+# Phase 2 — QC visualisation (R)
+Rscript scripts/03b_plot_qc.R
+
+# Phase 2 — WNN integration (R, ~5–10 min)
+Rscript scripts/04_integrate_rna_atac_wnn.R \
+  --cluster-annotations results/integration/cluster_annotations.tsv
+
+# Phase 3 — RNA vs WNN comparison and TF activity (Python)
+python scripts/05_compare_rna_vs_wnn.py \
+  --label-map results/comparison/wnn_to_broad_labels.tsv
+python scripts/06_tf_activity.py
+python scripts/07_plot_tf_activity.py
+
+# Phase 4 — ATAC motif enrichment (R, ~10–20 min)
+Rscript scripts/08_motif_enrichment_atac.R
+
+# Phase 4 — Cross-modal TF comparison (Python)
+python scripts/09_compare_rna_atac_tf.py
+
+# Phase 5 — Pseudotime (R + Python)
+Rscript scripts/10_pseudotime_subset.R
+python scripts/11_plot_pseudotime.py
+```
+
+### OS notes
+
+| Platform | Notes |
+|----------|-------|
+| macOS (Apple Silicon) | `r-base=4.4` and all bioconductor packages are available for `osx-arm64` on conda-forge/bioconda. No `osx-64` workaround required. |
+| Linux | No special steps needed |
+| Windows | WSL2 (Ubuntu) is strongly recommended; native Windows R/conda interaction is not tested |
+
 ## Repo progression
 
 1. RNA-only baseline import
