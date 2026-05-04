@@ -1,493 +1,154 @@
 # sc-rna-atac-regulon-benchmark
 
-This repository extends an RNA-only single-cell benchmark into a paired RNA+ATAC multiome workflow using the 10x PBMC Multiome dataset. The project demonstrates end-to-end multimodal single-cell analysis: RNA/ATAC QC, Seurat/Signac preprocessing, WNN integration, broad immune cell-state recovery, TF activity proxy analysis, chromVAR motif validation, and monocyte pseudotime exploration.
+A reproducible single-cell multiome project extending an RNA-only immune cell-state benchmark into paired RNA+ATAC integration, regulatory program analysis, and optional pseudotime exploration.
 
-The goal is to show how RNA-defined immune programs can be compared with chromatin accessibility-derived regulatory signals in a reproducible Python/R workflow.
+This repository uses the 10x PBMC Multiome dataset to demonstrate RNA/ATAC quality control, Seurat/Signac preprocessing, WNN integration, RNA-derived TF activity proxy analysis, ATAC motif validation with chromVAR, and monocyte pseudotime analysis.
 
-Key technical components:
-- Multiome QC with RNA, ATAC, FRiP-like, blacklist, nucleosome, TSS, and doublet annotations
-- RNA normalization with SCTransform and ATAC normalization with TF-IDF/LSI
-- WNN integration for joint RNA+ATAC clustering
+## Why this project matters
+
+Single-cell RNA-seq identifies transcriptional cell states, while ATAC-seq adds chromatin accessibility context. This project compares RNA-defined immune programs with ATAC-derived regulatory signals in a shared-cell multiome workflow.
+
+The emphasis is on reproducible computational biology, transparent QC, and careful interpretation rather than overclaiming biological discovery.
+
+## What this repo demonstrates
+
+- Paired RNA+ATAC preprocessing and multimodal QC
+- WNN integration for joint RNA+ATAC cell-state recovery
+- Comparison against an RNA-only single-cell benchmark
 - RNA-derived TF activity proxy analysis across immune populations
 - ATAC motif enrichment using JASPAR/chromVAR
-- Cross-modal RNA-vs-ATAC TF program comparison
+- Cross-modal RNA-vs-ATAC regulatory program comparison
 - Optional monocyte pseudotime analysis using Slingshot
-
-## Relationship to the previous repo
-
-This repository reuses RNA-only baseline outputs from `sc-cell-state-benchmark`
-as the reference point for multimodal and regulatory comparisons.
+- Python/R package structure with tests and environment files
 
 ## Key results
 
 - Recovered 7 of 8 broad RNA-defined immune populations after WNN label harmonization.
-- Identified expected regulatory program patterns: antigen presentation in dendritic/B cells, cytotoxic programs in NK/CD8 T cells, and inflammatory/monocyte activation programs in monocytes.
-- Added traceable multimodal QC outputs with one failure flag per criterion.
+- Identified expected immune regulatory patterns:
+  - antigen presentation in dendritic cells and B cells
+  - cytotoxic programs in NK and CD8 T cells
+  - inflammatory and monocyte-activation programs in monocytes
+- Added traceable multimodal QC outputs with one failure flag per active QC criterion.
 - Used ATAC motif deviations to independently evaluate RNA-derived TF activity proxies.
-- Built pseudotime-ready monocyte outputs for linking chromatin accessibility changes with regulatory dynamics.
+- Built pseudotime-ready monocyte outputs for linking chromatin accessibility with regulatory dynamics.
+
+## Workflow overview
+
+| Phase | Goal | Main scripts |
+|---|---|---|
+| 1 | Import RNA-only baseline outputs | scripts/01_import_rna_baseline.py |
+| 2 | Preprocess RNA+ATAC multiome data | scripts/03_preprocess_multiome.R |
+| 2 | Plot QC and optional doublet/fragment QC | scripts/03b_plot_qc.R, scripts/03c_doublet_qc.R, scripts/03d_plot_atac_fragment_qc.R |
+| 2 | Run WNN integration | scripts/04_integrate_rna_atac_wnn.R |
+| 3 | Compare RNA and WNN cell labels | scripts/05_compare_rna_vs_wnn.py |
+| 3 | Compute and plot TF activity proxies | scripts/06_tf_activity.py, scripts/07_plot_tf_activity.py |
+| 4 | Run ATAC motif enrichment | scripts/08_motif_enrichment_atac.R |
+| 4 | Compare RNA and ATAC TF signals | scripts/09_compare_rna_atac_tf.py |
+| 5 | Run monocyte pseudotime analysis | scripts/10_pseudotime_subset.R, scripts/11_plot_pseudotime.py |
+
+## Quick start
+
+Create the environment:
+
+    mamba env create -f environment.yml
+    conda activate sc-rna-atac
+
+Install the Python package in editable mode:
+
+    pip install -e .
+
+Run tests:
+
+    pytest
+
+Run the main workflow:
+
+    python scripts/01_import_rna_baseline.py
+    Rscript scripts/02_download_or_prepare_multiome.R --download
+    Rscript scripts/03_preprocess_multiome.R
+    Rscript scripts/03b_plot_qc.R
+    Rscript scripts/04_integrate_rna_atac_wnn.R --cluster-annotations results/integration/cluster_annotations.tsv
+    python scripts/05_compare_rna_vs_wnn.py --label-map results/comparison/wnn_to_broad_labels.tsv
+    python scripts/06_tf_activity.py
+    python scripts/07_plot_tf_activity.py
+    Rscript scripts/08_motif_enrichment_atac.R
+    python scripts/09_compare_rna_atac_tf.py
+    Rscript scripts/10_pseudotime_subset.R
+    python scripts/11_plot_pseudotime.py
+
+Optional QC scripts:
+
+    Rscript scripts/03c_doublet_qc.R
+    Rscript scripts/03d_plot_atac_fragment_qc.R
+
+## Data
+
+This project uses:
+
+- RNA-only baseline outputs from the companion sc-cell-state-benchmark repository
+- 10x Genomics PBMC Multiome RNA+ATAC data
+
+Expected input locations:
+
+| Path | Purpose |
+|---|---|
+| data/external/ | RNA-only baseline score tables |
+| data/raw/ | raw 10x multiome files |
+| data/processed/ | processed Seurat objects |
+
+Large raw and processed data files are not intended to be committed.
+
+## Main outputs
+
+| Directory | Contents |
+|---|---|
+| results/baseline/ | standardized RNA-only baseline outputs |
+| results/integration/ | QC summaries, WNN metadata, integration outputs |
+| results/regulons/ | TF activity and ATAC motif summaries |
+| results/comparison/ | RNA-vs-WNN and RNA-vs-ATAC comparison tables |
+| results/dynamics/ | monocyte pseudotime outputs |
+| results/figures/ | QC, TF activity, motif, and pseudotime plots |
+
+## Method summary
+
+RNA preprocessing uses SCTransform with mitochondrial percentage regression. ATAC preprocessing uses TF-IDF and LSI. Joint RNA+ATAC structure is modeled using WNN integration.
+
+Regulatory analysis is intentionally lightweight and interpretable. RNA program scores are used as TF activity proxies, then compared against ATAC motif deviation scores from chromVAR. This provides a cross-modal regulatory consistency check without claiming full GRN reconstruction.
+
+## Interpretation notes
+
+This is a portfolio and methods-development repository, not a clinically validated biological study.
+
+The TF analysis should be interpreted as regulatory program scoring and motif-based validation, not full causal regulon inference. Pseudotime analysis is exploratory and currently focused on monocyte-lineage cells.
+
+## Environment notes
+
+The full project environment is defined in environment.yml and includes Python 3.11, R 4.4, Seurat, Signac, chromVAR, Slingshot-related dependencies, and Bioconductor packages.
+
+pyproject.toml defines the Python package metadata, dependencies, and test configuration.
+
+renv.lock records the R package state used during development.
+
+For detailed installation notes, troubleshooting, and R/Bioconductor caveats, see docs/setup.md.
 
 ## Repository structure
-```
-sc-rna-atac-regulon-benchmark/
-├── README.md
-├── environment.yml
-├── requirements.txt
-├── pyproject.toml
-├── .gitignore
-├── data/
-│   ├── raw/
-│   ├── processed/
-│   └── external/
-├── docs/
-├── figures/
-├── results/
-│   ├── baseline/
-│   ├── integration/
-│   ├── regulons/
-│   ├── dynamics/
-│   └── project_summary.md
-├── scripts/
-├── src/sc_rna_atac_regulon_benchmark/
-└── tests/
-```
 
-## Environment setup
+    sc-rna-atac-regulon-benchmark/
+    ├── README.md
+    ├── environment.yml
+    ├── pyproject.toml
+    ├── renv.lock
+    ├── data/
+    ├── docs/
+    ├── results/
+    ├── scripts/
+    ├── src/sc_rna_atac_regulon_benchmark/
+    └── tests/
 
-This project uses **Python 3.11** and **R 4.4** installed through conda
-(conda-forge + bioconda). All compiled R packages — including the full
-Seurat/Signac/chromVAR/Slingshot/Bioconductor stack — are resolved by conda
-to avoid source-build failures.
+## Related repository
 
-> **R 4.3 is not supported.** Dependency conflicts were observed between
-> chromVAR, sparseMatrixStats, and BSgenome packages under R 4.3. Use R 4.4
-> as specified in `environment.yml`.
+This project builds on the RNA-only sc-cell-state-benchmark repository, which provides baseline immune cell-state outputs used here for multimodal comparison.
 
-### Prerequisites
+## License
 
-- [Miniconda or Anaconda](https://docs.conda.io/en/latest/miniconda.html)
-- **mamba** (strongly recommended — the solver is dramatically faster for this
-  large environment):
-  ```bash
-  conda install -n base -c conda-forge mamba
-  ```
-- Git
-
-### Step 1 — Create the conda environment
-
-The environment installs Python, R 4.4, and all required R packages
-(Seurat, Signac, chromVAR, Slingshot, JASPAR2020, annotation packages, etc.)
-in a single solve. The first creation downloads ~2–4 GB of packages; conda
-caches tarballs so subsequent creation is fast.
-
-```bash
-# With mamba (recommended — ~5 min)
-mamba env create -f environment.yml
-
-# With conda (slower — 20–40 min)
-conda env create -f environment.yml
-
-conda activate sc-rna-atac
-```
-
-To update an existing environment after pulling changes:
-
-```bash
-mamba env update -f environment.yml --prune
-```
-
-### Step 2 — Verify R packages
-
-Confirm every R package loads cleanly. The script will attempt a BiocManager
-fallback install for anything conda failed to provide.
-
-```bash
-Rscript scripts/install_r_deps.R
-```
-
-All lines should show a version number. Any `MISSING` line means conda did not
-install that package — re-run `mamba env update -f environment.yml --prune`
-and try again before reaching for the BiocManager fallback.
-
-> **Note on `slingshot`:** `bioconductor-slingshot` is intentionally absent from
-> `environment.yml`.  Its dependency `r-princurve` is not available for
-> `osx-arm64` in the current bioconda build, which causes the conda solver to
-> fail.  `install_r_deps.R` detects `slingshot` as missing and installs it
-> automatically via BiocManager — no manual action is required.
-
-### Step 3 — Lock R package versions (renv)
-
-After verification passes, generate `renv.lock` to record exact installed
-versions. Commit this file to the repository so collaborators can reproduce
-the exact package state.
-
-```r
-# Run inside R (with the conda env active)
-library(renv)
-renv::init(bare = TRUE)   # initialise renv; does not re-install packages
-renv::snapshot()          # write renv.lock
-```
-
-The `renv.lock` format is JSON. Example for two packages:
-
-```json
-{
-  "R": { "Version": "4.4.1" },
-  "Packages": {
-    "Seurat": {
-      "Package": "Seurat",
-      "Version": "5.1.0",
-      "Source": "Repository",
-      "Repository": "CRAN"
-    },
-    "Signac": {
-      "Package": "Signac",
-      "Version": "1.13.0",
-      "Source": "Repository",
-      "Repository": "Bioconductor"
-    }
-  }
-}
-```
-
-To restore from `renv.lock` on a new machine after Step 1:
-
-```bash
-Rscript -e "renv::restore()"
-```
-
-### Step 4 — Verify the complete setup
-
-```bash
-# Python packages
-python -c "import pandas, numpy, matplotlib, seaborn, scipy, statsmodels; print('Python OK')"
-
-# R packages (runs install_r_deps.R, exits 0 if all present)
-Rscript scripts/install_r_deps.R
-```
-
-### Running the pipeline
-
-Activate the conda environment before running any script. Scripts are numbered
-and must be run in order.
-
-```bash
-conda activate sc-rna-atac
-
-# Phase 1 — RNA baseline import (Python)
-python scripts/01_import_rna_baseline.py
-
-# Phase 2 — Download/validate raw data (R)
-Rscript scripts/02_download_or_prepare_multiome.R --download
-
-# Phase 2 — Preprocess multiome (R, ~5–15 min)
-Rscript scripts/03_preprocess_multiome.R
-
-# Phase 2 — QC visualisation (R; reads CSV, no Seurat object needed)
-Rscript scripts/03b_plot_qc.R
-
-# Phase 2 — ATAC fragment-length QC (R; optional)
-Rscript scripts/03d_plot_atac_fragment_qc.R
-
-# Phase 2 — Doublet annotation (R; optional, requires scDblFinder)
-Rscript scripts/03c_doublet_qc.R
-
-# Phase 2 — WNN integration (R, ~5–10 min)
-Rscript scripts/04_integrate_rna_atac_wnn.R \
-  --cluster-annotations results/integration/cluster_annotations.tsv
-
-# Phase 3 — RNA vs WNN comparison and TF activity (Python)
-python scripts/05_compare_rna_vs_wnn.py \
-  --label-map results/comparison/wnn_to_broad_labels.tsv
-python scripts/06_tf_activity.py
-python scripts/07_plot_tf_activity.py
-
-# Phase 4 — ATAC motif enrichment (R, ~10–20 min)
-Rscript scripts/08_motif_enrichment_atac.R
-
-# Phase 4 — Cross-modal TF comparison (Python)
-python scripts/09_compare_rna_atac_tf.py
-
-# Phase 5 — Pseudotime (R + Python)
-Rscript scripts/10_pseudotime_subset.R
-python scripts/11_plot_pseudotime.py
-```
-
-### OS notes
-
-| Platform | Notes |
-|----------|-------|
-| macOS (Apple Silicon) | `r-base=4.4` and all bioconductor packages are available for `osx-arm64` on conda-forge/bioconda. No `osx-64` workaround required. |
-| Linux | No special steps needed |
-| Windows | WSL2 (Ubuntu) is strongly recommended; native Windows R/conda interaction is not tested |
-
-## Repo progression
-
-1. RNA-only baseline import
-2. RNA+ATAC integration
-3. TF / regulon inference
-4. Optional dynamic analysis
-
-## Phase 1 — RNA baseline import
-
-This phase reuses exported Kang et al. RNA baseline outputs from the upstream
-`sc-cell-state-benchmark` repository. No re-processing is performed; the script
-standardises column names and writes clean outputs for downstream comparison.
-
-**Required inputs** (`data/external/`):
-
-| File | Contents |
-|------|----------|
-| `kang_interferon_scores.csv` | Per-cell IFN scores (`cell_id`, `condition`, raw score columns) |
-| `kang_program_scores.csv` | Per-cell program scores with `cell_type` annotations |
-
-**Generated outputs** (`results/baseline/`):
-
-| File | Contents |
-|------|----------|
-| `rna_cell_metadata.csv` | `cell_id`, `condition`, `cell_type` |
-| `rna_ifn_scores.csv` | Per-cell IFN scores with standardised column names |
-| `rna_program_scores.csv` | Per-cell program scores with standardised column names |
-| `rna_baseline_summary.md` | Cell counts, cell-type counts, condition breakdown |
-
-**Run:**
-
-```bash
-python scripts/01_import_rna_baseline.py
-```
-
-## Phase 2 — RNA+ATAC WNN integration
-
-Paired RNA+ATAC integration using the 10x Genomics PBMC Multiome 10k dataset.
-WNN clustering produces joint multimodal cell states; outputs feed into Phase 3
-regulon inference and Phase 5 cross-dataset comparison.
-
-### Preprocessing and QC
-
-`03_preprocess_multiome.R` applies per-cell QC filtering across both modalities,
-normalises each, and reduces dimensions. All thresholds are CLI flags with
-documented defaults.
-
-**RNA QC:**
-
-| Metric | Default |
-|--------|---------|
-| `nFeature_RNA` | 200 – 7,500 |
-| `percent_mt` | < 20% |
-| `nCount_RNA` | no bound (flag available) |
-
-**ATAC QC:**
-
-| Metric | Default |
-|--------|---------|
-| `nCount_ATAC` | 1,000 – 100,000 |
-| TSS enrichment | ≥ 2.0 |
-| Nucleosome signal | < 2.0 |
-
-**Optional metrics** (skipped when required inputs are absent):
-
-- **FRiP-like (`pct_reads_in_peaks`):** computed when the 10x per-barcode
-  metrics CSV is supplied via `--per-barcode-metrics`. Filters cells below
-  `--min-pct-reads-in-peaks` (default 15%).
-- **Blacklist ratio:** enabled with `--blacklist-filter`; regions loaded from
-  the Signac built-in object, AnnotationHub, or explicitly skipped
-  (`--blacklist-source builtin|annotationhub|none`).
-- **Doublet annotation:** `03c_doublet_qc.R` uses `scDblFinder` to score and
-  classify cells. Cells are annotated only — none are removed by this script.
-
-**Audit trail:** `preprocessing_qc_stats.csv` includes one `fail_<criterion>`
-boolean column per active QC filter so every filtering decision is traceable
-without re-running the pipeline.
-
-**Normalisation and dimensionality reduction:**
-
-- RNA: SCTransform (regressing `percent_mt`) → PCA (50 dims)
-- ATAC: TF-IDF → LSI (50 dims; dim 1 is depth-correlated and dropped when
-  building the WNN graph in script 04)
-
-**QC plots:** `03b_plot_qc.R` reads `preprocessing_qc_stats.csv` directly and
-produces violin and scatter plots for both modalities (no Seurat object needed).
-`03d_plot_atac_fragment_qc.R` generates a fragment-length histogram from the
-Seurat object, grouped by nucleosome signal when available.
-
-**Commands:**
-
-```bash
-# Baseline preprocessing
-Rscript scripts/03_preprocess_multiome.R
-
-# With 10x per-barcode metrics for FRiP-like filtering
-Rscript scripts/03_preprocess_multiome.R \
-  --per-barcode-metrics data/raw/pbmc_granulocyte_sorted_10k_per_barcode_metrics.csv \
-  --min-pct-reads-in-peaks 15
-
-# Optional doublet annotation (annotation only, no cell removal)
-Rscript scripts/03c_doublet_qc.R
-```
-
-**Key outputs:**
-
-| File | Location | Contents |
-|------|----------|----------|
-| `pbmc_multiome_preprocessed.rds` | `data/processed/` | Seurat object: RNA + ATAC assays, PCA, LSI |
-| `preprocessing_qc_stats.csv` | `results/integration/` | Per-cell metrics, `pass_qc`, `fail_<criterion>` columns |
-| `multiome_qc_summary.md` | `results/integration/` | Cell counts, per-criterion failure counts, thresholds |
-| `doublet_qc_annotations.csv` | `results/integration/` | `doublet_score`, `doublet_class` per cell (if run) |
-
-### Broad cell-type recovery after WNN integration
-
-The Phase 1 RNA-only baseline identified 8 broad immune cell classes. An exact
-string comparison between RNA baseline labels and WNN cluster labels showed zero
-overlap, because WNN produced finer-grained multimodal labels rather than
-reusing the same label vocabulary.
-
-After harmonising WNN labels to broad immune categories using
-`results/comparison/wnn_to_broad_labels.tsv`, 7 of the 8 RNA-defined populations
-were recovered:
-
-- B cells
-- CD14+ Monocytes
-- CD4 T cells
-- CD8 T cells
-- Dendritic cells
-- FCGR3A+ Monocytes
-- NK cells
-
-The only RNA-defined label not recovered was **Megakaryocytes**, likely absent
-or extremely rare in the multiome dataset.
-
-Example refined WNN labels not present in the RNA baseline:
-
-- FOXP3+ Treg
-- FCGR3A+ Monocyte
-- pDC-like
-- NK subset
-- Activated CD4 T state
-
-WNN preserved the major biological structure from the RNA-only analysis while
-refining it into more specific multimodal cell states.
-
-## Phase 3 — TF activity proxy analysis
-
-Rather than running pySCENIC or ArchR, Phase 3 uses the five RNA program score
-columns from `results/baseline/rna_program_scores.csv` as lightweight proxies for
-transcription-factor activity.  Each program maps to a canonical TF axis:
-
-| Program | TF axis |
-|---------|---------|
-| `interferon_alpha_beta_response` | IRF3 / IRF7 / STAT1/2 |
-| `inflammatory_response` | NF-κB / AP-1 |
-| `antigen_presentation_mhc` | CIITA / IRF1 |
-| `cytotoxic_nk_like` | EOMES / TBX21 |
-| `monocyte_activation` | SPI1 (PU.1) / CEBPB |
-
-`06_tf_activity.py` computes mean ± std per RNA cell type and writes flat summary
-tables used by the plotting script.  `07_plot_tf_activity.py` produces z-scored
-heatmaps and per-program bar charts.
-
-### Biological findings
-
-- **Antigen presentation (CIITA / IRF1):** Dendritic cells and B cells show the
-  strongest activity, consistent with their professional APC roles.
-- **Cytotoxic program (EOMES / TBX21):** NK cells and CD8 T cells rank highest,
-  as expected for cytolytic populations.
-- **Inflammatory & monocyte-activation programs (NF-κB / AP-1, PU.1 / CEBPB):**
-  CD14+ and FCGR3A+ monocytes dominate both axes.
-- **Interferon α/β response (IRF3 / IRF7 / STAT1/2):** FCGR3A+ monocytes show
-  the strongest signal among all populations.
-- **CD4 T cells** are consistently low across all innate-associated programs.
-
-The TF-activity proxy layer validates that the WNN-aligned populations preserve
-expected immune regulatory programs.
-
-### Run
-
-```bash
-python scripts/06_tf_activity.py
-python scripts/07_plot_tf_activity.py
-```
-
-### Generated outputs
-
-| File | Location |
-|------|----------|
-| `tf_activity_rna_by_celltype.csv` | `results/regulons/` |
-| `tf_activity_rna_by_broad.csv` | `results/regulons/` |
-| `tf_activity_wnn_celltype_map.csv` | `results/regulons/` |
-| `tf_activity_summary.md` | `results/regulons/` |
-| `tf_heatmap_rna_celltype.png` | `results/figures/tf_activity/` |
-| `tf_heatmap_rna_broad.png` | `results/figures/tf_activity/` |
-| `tf_barplot_interferon_alpha_beta_response.png` | `results/figures/tf_activity/` |
-| `tf_barplot_inflammatory_response.png` | `results/figures/tf_activity/` |
-| `tf_barplot_antigen_presentation_mhc.png` | `results/figures/tf_activity/` |
-| `tf_barplot_cytotoxic_nk_like.png` | `results/figures/tf_activity/` |
-| `tf_barplot_monocyte_activation.png` | `results/figures/tf_activity/` |
-
-## Phase 4 — ATAC motif enrichment and cross-modal TF validation
-
-Phase 4 uses the multiome ATAC data to independently validate the Phase 3 TF-activity
-proxies.  `08_motif_enrichment_atac.R` scans ATAC peaks for seven JASPAR2020 motifs
-covering the five TF-activity program axes, runs chromVAR to compute per-cell deviation
-z-scores, and writes flat-file summaries.  `09_compare_rna_atac_tf.py` collapses motif
-deviations to program level, correlates them against the Phase 3 RNA proxy scores across
-cell types, and produces scatter plots and an ATAC heatmap.
-
-### Run
-
-```bash
-Rscript scripts/08_motif_enrichment_atac.R
-python  scripts/09_compare_rna_atac_tf.py
-```
-
-### Generated outputs
-
-| File | Location |
-|------|----------|
-| `atac_motif_deviations.csv` | `results/regulons/` |
-| `atac_motif_by_celltype.csv` | `results/regulons/` |
-| `atac_motif_summary.md` | `results/regulons/` |
-| `tf_rna_atac_correlation.csv` | `results/comparison/` |
-| `tf_heatmap_atac_celltype.png` | `results/figures/tf_activity/` |
-| `tf_rna_atac_scatter_<program>.png` × 5 | `results/figures/tf_activity/` |
-
-## Phase 5 — Monocyte pseudotime trajectory
-
-Phase 5 fits a Slingshot pseudotime trajectory over the monocyte-lineage cells
-(CD14+ Monocytes and FCGR3A+ Monocytes) using the existing WNN UMAP embedding.
-The outputs are structured for downstream cell-level joins with Phase 4 ATAC motif
-deviations and population-level annotation from Phase 3 RNA program scores.
-
-`10_pseudotime_subset.R` subsets the WNN object to monocyte cells, runs Slingshot
-with `start.clus = "CD14+ Monocytes"` and `end.clus = "FCGR3A+ Monocytes"`, and
-exports min-max-scaled pseudotime alongside a pre-joined RNA population table.
-
-`11_plot_pseudotime.py` reads the flat CSV outputs from script 10 and the Phase 4
-ATAC motif deviations to produce up to four figures (UMAP, ATAC motif trends,
-RNA population reference bar chart, and an optional per-cell RNA trend panel).
-
-> **RNA data-availability note:** Phase 3 RNA program scores originate from the
-> Kang et al. dataset (different barcodes from the multiome cells).  Output 2
-> therefore annotates each multiome cell with the population-level mean ± std for
-> its broad label rather than per-cell measurements.  If per-cell RNA program scores
-> for the multiome cells are generated in a future phase, they can be joined to
-> `pseudotime_monocyte_cells.csv` on `cell_id`.
-
-### Run
-
-```bash
-Rscript scripts/10_pseudotime_subset.R
-python  scripts/11_plot_pseudotime.py
-# Optional: supply per-cell RNA scores to enable Figure 4
-# python scripts/11_plot_pseudotime.py --rna-cell-scores path/to/rna_cell_scores.csv
-```
-
-### Generated outputs
-
-| File | Location | Contents |
-|------|----------|----------|
-| `pseudotime_monocyte_cells.csv` | `results/dynamics/` | Per-cell pseudotime; join key for ATAC (`cell_id`) |
-| `pseudotime_monocyte_rna_population.csv` | `results/dynamics/` | Per-cell × RNA population means (if Phase 3 file present) |
-| `pseudotime_summary.md` | `results/dynamics/` | Run report and downstream join-status table |
-| `pseudotime_umap_monocyte.png` | `results/figures/dynamics/` | UMAP coloured by pseudotime (left) and broad label (right) |
-| `pseudotime_atac_motif_trends.png` | `results/figures/dynamics/` | Per-motif chromVAR deviation z-score vs pseudotime (cell-level ATAC) |
-| `pseudotime_rna_population_reference.png` | `results/figures/dynamics/` | RNA program scores by broad label (Kang et al. reference; no pseudotime axis) |
-| `pseudotime_rna_cell_trends.png` | `results/figures/dynamics/` | Per-cell RNA program trends vs pseudotime (only if `--rna-cell-scores` supplied) |
+MIT
