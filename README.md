@@ -1,21 +1,30 @@
 # sc-rna-atac-regulon-benchmark
 
-A follow-up single-cell multiome repository extending the RNA-only
-`sc-cell-state-benchmark` into paired RNA+ATAC integration, regulatory inference,
-and optional dynamic analysis.
+This repository extends an RNA-only single-cell benchmark into a paired RNA+ATAC multiome workflow using the 10x PBMC Multiome dataset. The project demonstrates end-to-end multimodal single-cell analysis: RNA/ATAC QC, Seurat/Signac preprocessing, WNN integration, broad immune cell-state recovery, TF activity proxy analysis, chromVAR motif validation, and monocyte pseudotime exploration.
 
-## What this repo demonstrates
+The goal is to show how RNA-defined immune programs can be compared with chromatin accessibility-derived regulatory signals in a reproducible Python/R workflow.
 
-- Import of RNA-only baseline outputs from the benchmark repo
-- Paired RNA+ATAC integration using a shared-cell multiome dataset
-- Joint clustering and embedding with multimodal neighborhood analysis
-- TF/regulon inference and regulatory interpretation
-- Optional pseudotime analysis of dynamic regulatory responses
+Key technical components:
+- Multiome QC with RNA, ATAC, FRiP-like, blacklist, nucleosome, TSS, and doublet annotations
+- RNA normalization with SCTransform and ATAC normalization with TF-IDF/LSI
+- WNN integration for joint RNA+ATAC clustering
+- RNA-derived TF activity proxy analysis across immune populations
+- ATAC motif enrichment using JASPAR/chromVAR
+- Cross-modal RNA-vs-ATAC TF program comparison
+- Optional monocyte pseudotime analysis using Slingshot
 
 ## Relationship to the previous repo
 
 This repository reuses RNA-only baseline outputs from `sc-cell-state-benchmark`
 as the reference point for multimodal and regulatory comparisons.
+
+## Key results
+
+- Recovered 7 of 8 broad RNA-defined immune populations after WNN label harmonization.
+- Identified expected regulatory program patterns: antigen presentation in dendritic/B cells, cytotoxic programs in NK/CD8 T cells, and inflammatory/monocyte activation programs in monocytes.
+- Added traceable multimodal QC outputs with one failure flag per criterion.
+- Used ATAC motif deviations to independently evaluate RNA-derived TF activity proxies.
+- Built pseudotime-ready monocyte outputs for linking chromatin accessibility changes with regulatory dynamics.
 
 ## Repository structure
 ```
@@ -173,8 +182,14 @@ Rscript scripts/02_download_or_prepare_multiome.R --download
 # Phase 2 — Preprocess multiome (R, ~5–15 min)
 Rscript scripts/03_preprocess_multiome.R
 
-# Phase 2 — QC visualisation (R)
+# Phase 2 — QC visualisation (R; reads CSV, no Seurat object needed)
 Rscript scripts/03b_plot_qc.R
+
+# Phase 2 — ATAC fragment-length QC (R; optional)
+Rscript scripts/03d_plot_atac_fragment_qc.R
+
+# Phase 2 — Doublet annotation (R; optional, requires scDblFinder)
+Rscript scripts/03c_doublet_qc.R
 
 # Phase 2 — WNN integration (R, ~5–10 min)
 Rscript scripts/04_integrate_rna_atac_wnn.R \
@@ -245,6 +260,78 @@ python scripts/01_import_rna_baseline.py
 Paired RNA+ATAC integration using the 10x Genomics PBMC Multiome 10k dataset.
 WNN clustering produces joint multimodal cell states; outputs feed into Phase 3
 regulon inference and Phase 5 cross-dataset comparison.
+
+### Preprocessing and QC
+
+`03_preprocess_multiome.R` applies per-cell QC filtering across both modalities,
+normalises each, and reduces dimensions. All thresholds are CLI flags with
+documented defaults.
+
+**RNA QC:**
+
+| Metric | Default |
+|--------|---------|
+| `nFeature_RNA` | 200 – 7,500 |
+| `percent_mt` | < 20% |
+| `nCount_RNA` | no bound (flag available) |
+
+**ATAC QC:**
+
+| Metric | Default |
+|--------|---------|
+| `nCount_ATAC` | 1,000 – 100,000 |
+| TSS enrichment | ≥ 2.0 |
+| Nucleosome signal | < 2.0 |
+
+**Optional metrics** (skipped when required inputs are absent):
+
+- **FRiP-like (`pct_reads_in_peaks`):** computed when the 10x per-barcode
+  metrics CSV is supplied via `--per-barcode-metrics`. Filters cells below
+  `--min-pct-reads-in-peaks` (default 15%).
+- **Blacklist ratio:** enabled with `--blacklist-filter`; regions loaded from
+  the Signac built-in object, AnnotationHub, or explicitly skipped
+  (`--blacklist-source builtin|annotationhub|none`).
+- **Doublet annotation:** `03c_doublet_qc.R` uses `scDblFinder` to score and
+  classify cells. Cells are annotated only — none are removed by this script.
+
+**Audit trail:** `preprocessing_qc_stats.csv` includes one `fail_<criterion>`
+boolean column per active QC filter so every filtering decision is traceable
+without re-running the pipeline.
+
+**Normalisation and dimensionality reduction:**
+
+- RNA: SCTransform (regressing `percent_mt`) → PCA (50 dims)
+- ATAC: TF-IDF → LSI (50 dims; dim 1 is depth-correlated and dropped when
+  building the WNN graph in script 04)
+
+**QC plots:** `03b_plot_qc.R` reads `preprocessing_qc_stats.csv` directly and
+produces violin and scatter plots for both modalities (no Seurat object needed).
+`03d_plot_atac_fragment_qc.R` generates a fragment-length histogram from the
+Seurat object, grouped by nucleosome signal when available.
+
+**Commands:**
+
+```bash
+# Baseline preprocessing
+Rscript scripts/03_preprocess_multiome.R
+
+# With 10x per-barcode metrics for FRiP-like filtering
+Rscript scripts/03_preprocess_multiome.R \
+  --per-barcode-metrics data/raw/pbmc_granulocyte_sorted_10k_per_barcode_metrics.csv \
+  --min-pct-reads-in-peaks 15
+
+# Optional doublet annotation (annotation only, no cell removal)
+Rscript scripts/03c_doublet_qc.R
+```
+
+**Key outputs:**
+
+| File | Location | Contents |
+|------|----------|----------|
+| `pbmc_multiome_preprocessed.rds` | `data/processed/` | Seurat object: RNA + ATAC assays, PCA, LSI |
+| `preprocessing_qc_stats.csv` | `results/integration/` | Per-cell metrics, `pass_qc`, `fail_<criterion>` columns |
+| `multiome_qc_summary.md` | `results/integration/` | Cell counts, per-criterion failure counts, thresholds |
+| `doublet_qc_annotations.csv` | `results/integration/` | `doublet_score`, `doublet_class` per cell (if run) |
 
 ### Broad cell-type recovery after WNN integration
 

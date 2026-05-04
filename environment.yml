@@ -31,6 +31,7 @@ dependencies:
   - seaborn>=0.12
   - scipy>=1.11           # stats.pearsonr used in 09_compare_rna_atac_tf.py
   - statsmodels>=0.14     # lowess smoother used in 11_plot_pseudotime.py
+  - anndata>=0.10         # AnnData container used by preprocessing module and tests
 
   # ── R interpreter ───────────────────────────────────────────────────────────
   - r-base=4.4            # Bioconductor 3.20 is the matching release for R 4.4
