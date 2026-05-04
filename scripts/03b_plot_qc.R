@@ -37,7 +37,7 @@ suppressPackageStartupMessages({
   sub("--file=", "", grep("--file=", commandArgs(trailingOnly = FALSE), value = TRUE)),
   mustWork = FALSE
 )
-.repo_root <- dirname(dirname(.script_file))
+.repo_root <- normalizePath(getwd(), mustWork = TRUE)
 
 # ---------------------------------------------------------------------------
 # Arguments — thresholds default to script 03 values

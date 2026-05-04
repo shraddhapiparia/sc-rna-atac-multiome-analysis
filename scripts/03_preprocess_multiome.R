@@ -87,6 +87,10 @@ option_list <- list(
     help = "Apply ENCODE hg38 blacklist ratio filter"),
   make_option("--max-blacklist-ratio", type = "double", default = 0.05,
     help = "Maximum blacklist_ratio when --blacklist-filter is set [default: %default]"),
+  make_option("--blacklist-source", type = "character", default = "builtin",
+    help = paste("Source for hg38 blacklist regions when --blacklist-filter is set.",
+                 "Allowed: builtin (Signac built-in), annotationhub, none (skip).",
+                 "[default: %default]")),
 
   # Normalisation
   make_option("--no-sct", action = "store_true", default = FALSE,
@@ -97,10 +101,23 @@ option_list <- list(
     help = "Number of PCA / LSI dimensions [default: %default]"),
 
   make_option("--seed", type = "integer", default = 42L,
-    help = "Random seed [default: %default]")
+    help = "Random seed [default: %default]"),
+
+  # FRiP-like ATAC metric from 10x per-barcode metadata
+  make_option("--per-barcode-metrics", type = "character", default = NULL,
+    help = paste("Optional path to 10x per-barcode metrics CSV",
+                 "(columns: barcode, peak_region_fragments, passed_filters)",
+                 "[default: %default]")),
+  make_option("--min-pct-reads-in-peaks", type = "double", default = 15.0,
+    help = "Minimum percent reads in peaks (FRiP-like) when --per-barcode-metrics is supplied [default: %default]")
 )
 
 opt <- parse_args(OptionParser(option_list = option_list))
+
+if (!opt$`blacklist-source` %in% c("builtin", "annotationhub", "none")) {
+  stop("--blacklist-source must be one of: builtin, annotationhub, none", call. = FALSE)
+}
+
 set.seed(opt$seed)
 
 # SCTransform uses future for parallelism; on this ~10k-cell dataset the
@@ -222,52 +239,190 @@ obj <- NucleosomeSignal(obj)
 # TSSEnrichment: fast = FALSE computes per-cell scores (required for filtering)
 obj <- TSSEnrichment(obj, fast = FALSE)
 
-if (opt$`blacklist-filter`) {
-  message("Computing blacklist ratio (--blacklist-filter enabled)...")
-  if (!exists("blacklist_hg38_unified")) {
-    stop_clear(
-      "blacklist_hg38_unified not found. ",
-      "Ensure Signac >= 1.1 is installed, or load it via AnnotationHub. ",
-      "Re-run without --blacklist-filter to skip this metric."
-    )
+blacklist_available <- FALSE
+
+if (!opt$`blacklist-filter`) {
+  message("Blacklist filtering not requested (--blacklist-filter not set); skipping.")
+} else if (opt$`blacklist-source` == "none") {
+  message("Blacklist filtering skipped: --blacklist-source is 'none'.")
+} else {
+  bl_source <- opt$`blacklist-source`
+  message("Computing blacklist ratio (source: ", bl_source, ")...")
+
+  bl_regions <- if (bl_source == "builtin") {
+    # Try the global environment first (Signac <= 1.3 exports it on attach),
+    # then fall back to the package namespace (Signac >= 1.4 keeps it there).
+    bl <- if (exists("blacklist_hg38_unified")) {
+      blacklist_hg38_unified
+    } else {
+      tryCatch(
+        get("blacklist_hg38_unified", envir = asNamespace("Signac")),
+        error = function(e) NULL
+      )
+    }
+    if (is.null(bl)) {
+      stop_clear(
+        "blacklist_hg38_unified not found in the Signac package.\n",
+        "Options:\n",
+        "  Upgrade Signac (>= 1.1):   install.packages('Signac')\n",
+        "  Use AnnotationHub:          --blacklist-source annotationhub\n",
+        "  Skip blacklist filtering:   --blacklist-source none"
+      )
+    }
+    bl
+  } else {
+    # annotationhub — only loaded on demand; not a required dependency
+    if (!requireNamespace("AnnotationHub", quietly = TRUE)) {
+      stop_clear(
+        "AnnotationHub is not installed.\n",
+        "Install with:  BiocManager::install('AnnotationHub')\n",
+        "Or use the Signac built-in object:  --blacklist-source builtin"
+      )
+    }
+    tryCatch({
+      ah  <- AnnotationHub::AnnotationHub()
+      q   <- AnnotationHub::query(ah, c("hg38", "blacklist", "ENCODE"))
+      ids <- names(q)
+      if (length(ids) == 0L) {
+        stop_clear(
+          "No hg38 blacklist records found in AnnotationHub.\n",
+          "Try --blacklist-source builtin instead."
+        )
+      }
+      message("  Using AnnotationHub record: ", ids[1])
+      bl <- ah[[ids[1]]]
+      seqlevelsStyle(bl) <- "UCSC"
+      bl
+    }, error = function(e) {
+      stop_clear(
+        "Failed to retrieve hg38 blacklist from AnnotationHub:\n  ",
+        conditionMessage(e), "\n",
+        "Check your internet connection, or use --blacklist-source builtin."
+      )
+    })
   }
+
   obj[["blacklist_ratio"]] <- FractionCountsInRegion(
     obj,
     assay   = "ATAC",
-    regions = blacklist_hg38_unified   # built-in Signac GRanges for hg38
+    regions = bl_regions
   )
+  blacklist_available <- TRUE
+  message("  blacklist_ratio computed for ", fmt_int(ncol(obj)), " cells.")
 }
 
 DefaultAssay(obj) <- "RNA"
 
 # ---------------------------------------------------------------------------
-# Determine pass_qc — set before subsetting so the full pre-filter
-# object is auditable via the QC CSV
+# Optional FRiP-like ATAC metric from 10x per-barcode metrics
+# ---------------------------------------------------------------------------
+
+frip_available <- FALSE
+
+if (!is.null(opt$`per-barcode-metrics`)) {
+  pbm_file <- opt$`per-barcode-metrics`
+  if (!file.exists(pbm_file)) {
+    stop_clear("--per-barcode-metrics file not found: ", pbm_file)
+  }
+  message("Reading per-barcode metrics: ", pbm_file)
+  pbm <- read.csv(pbm_file, stringsAsFactors = FALSE)
+
+  required_cols <- c("barcode", "peak_region_fragments", "passed_filters")
+  missing_cols  <- setdiff(required_cols, colnames(pbm))
+  if (length(missing_cols) > 0) {
+    stop_clear(
+      "per-barcode metrics CSV is missing required columns: ",
+      paste(missing_cols, collapse = ", ")
+    )
+  }
+
+  rownames(pbm) <- pbm$barcode
+  cells         <- colnames(obj)
+  matched       <- pbm[cells, , drop = FALSE]   # NA rows for unmatched cells
+
+  prf <- matched$peak_region_fragments
+  pf  <- matched$passed_filters
+  # Guard against division by zero and missing values
+  pct <- ifelse(!is.na(prf) & !is.na(pf) & pf > 0, 100 * prf / pf, NA_real_)
+
+  obj[["peak_region_fragments"]] <- prf
+  obj[["passed_filters"]]        <- pf
+  obj[["pct_reads_in_peaks"]]    <- pct
+
+  n_frip_na <- sum(is.na(pct))
+  message(
+    "FRiP-like metric (pct_reads_in_peaks) computed. ",
+    fmt_int(sum(!is.na(pct))), " cells with values; ",
+    fmt_int(n_frip_na), " NAs (unmatched or zero passed_filters)."
+  )
+  frip_available <- TRUE
+} else {
+  message("--per-barcode-metrics not supplied; skipping FRiP/pct_reads_in_peaks.")
+}
+
+# ---------------------------------------------------------------------------
+# Determine pass_qc — one fail_* column per criterion, then combine.
+# Computed before subsetting so the full pre-filter object is auditable
+# via the QC CSV.
 # ---------------------------------------------------------------------------
 
 message("Applying QC thresholds...")
 md <- obj[[]]
 
-# TSS enrichment is stored as TSS.enrichment by Signac
-pass <- (
-  md$nFeature_RNA       >= opt$`min-features-rna`  &
-  md$nFeature_RNA       <= opt$`max-features-rna`  &
-  md$nCount_RNA         >= opt$`min-count-rna`      &
-  md$nCount_RNA         <= opt$`max-count-rna`      &
-  md$percent_mt         <  opt$`max-pct-mt`         &
-  md$nCount_ATAC        >= opt$`min-count-atac`     &
-  md$nCount_ATAC        <= opt$`max-count-atac`     &
-  md$TSS.enrichment     >= opt$`min-tss`            &
-  md$nucleosome_signal  <  opt$`max-nucleosome`
-)
+# Individual per-criterion fail flags (TRUE = cell failed that criterion)
+obj[["fail_rna_features"]] <-
+  is.na(md$nFeature_RNA) |
+  !(md$nFeature_RNA >= opt$`min-features-rna` &
+    md$nFeature_RNA <= opt$`max-features-rna`)
 
-if (opt$`blacklist-filter`) {
-  pass <- pass & (md$blacklist_ratio < opt$`max-blacklist-ratio`)
+obj[["fail_rna_counts"]] <-
+  is.na(md$nCount_RNA) |
+  !(md$nCount_RNA >= opt$`min-count-rna` &
+    md$nCount_RNA <= opt$`max-count-rna`)
+    
+obj[["fail_percent_mt"]] <-
+  is.na(md$percent_mt) |
+  md$percent_mt >= opt$`max-pct-mt`
+
+obj[["fail_atac_counts"]] <-
+  is.na(md$nCount_ATAC) |
+  !(md$nCount_ATAC >= opt$`min-count-atac` &
+    md$nCount_ATAC <= opt$`max-count-atac`)
+
+obj[["fail_tss_enrichment"]] <-
+  is.na(md$TSS.enrichment) |
+  md$TSS.enrichment < opt$`min-tss`
+
+obj[["fail_nucleosome_signal"]] <-
+  is.na(md$nucleosome_signal) |
+  md$nucleosome_signal >= opt$`max-nucleosome`
+
+if (blacklist_available) {
+  obj[["fail_blacklist_ratio"]] <-
+    is.na(md$blacklist_ratio) |
+    md$blacklist_ratio >= opt$`max-blacklist-ratio`
 }
+
+if (frip_available) {
+  # Cells with NA pct_reads_in_peaks also fail (unmatched / zero denominator)
+  obj[["fail_pct_reads_in_peaks"]] <-
+    is.na(md$pct_reads_in_peaks) |
+    md$pct_reads_in_peaks < opt$`min-pct-reads-in-peaks`
+}
+
+# Refresh md after adding fail_* columns
+md <- obj[[]]
+
+# pass_qc is the inverse union of all active fail columns
+fail_cols <- grep("^fail_", colnames(md), value = TRUE)
+pass <- rowSums(md[, fail_cols, drop = FALSE]) == 0
 
 obj[["pass_qc"]] <- pass
 n_pass <- sum(pass)
-message(fmt_int(n_pass), " / ", fmt_int(n_cells_raw), " cells pass QC")
+message(fmt_int(n_pass), " / ", fmt_int(n_cells_shared), " shared RNA+ATAC cells pass QC")
+
+# Per-criterion failure counts for reporting
+fail_counts <- colSums(md[, fail_cols, drop = FALSE])
 
 # ---------------------------------------------------------------------------
 # Write QC stats CSV (all pre-filter cells, for audit and downstream plots)
@@ -278,8 +433,13 @@ message("Writing QC stats CSV: ", QC_CSV)
 qc_cols <- c("nFeature_RNA", "nCount_RNA", "percent_mt",
              "nCount_ATAC", "nFeature_ATAC",
              "TSS.enrichment", "nucleosome_signal",
-             "pass_qc")
-if (opt$`blacklist-filter`) qc_cols <- c(qc_cols, "blacklist_ratio")
+             "pass_qc",
+             "fail_rna_features", "fail_rna_counts", "fail_percent_mt",
+             "fail_atac_counts", "fail_tss_enrichment", "fail_nucleosome_signal")
+if (blacklist_available)    qc_cols <- c(qc_cols, "blacklist_ratio", "fail_blacklist_ratio")
+if (frip_available)         qc_cols <- c(qc_cols, "peak_region_fragments",
+                                         "passed_filters", "pct_reads_in_peaks",
+                                         "fail_pct_reads_in_peaks")
 
 qc_df         <- obj[[qc_cols]]
 qc_df$cell_id <- rownames(qc_df)
@@ -349,11 +509,27 @@ message("Writing QC summary markdown: ", QC_MD)
 norm_mode <- if (!opt$`no-sct`) "SCTransform" else
   "NormalizeData + FindVariableFeatures + ScaleData"
 
-bl_line <- if (opt$`blacklist-filter`) {
-  paste0("| blacklist_ratio | < ", opt$`max-blacklist-ratio`, " |\n")
+bl_line <- if (blacklist_available) {
+  paste0("| blacklist_ratio (source: ", opt$`blacklist-source`, ") | < ",
+         opt$`max-blacklist-ratio`, " |\n")
+} else if (opt$`blacklist-filter`) {
+  paste0("| blacklist_ratio | not computed (--blacklist-source ",
+         opt$`blacklist-source`, ") |\n")
 } else {
-  "| blacklist_ratio filter | not applied |\n"
+  "| blacklist_ratio filter | not requested |\n"
 }
+
+frip_line <- if (frip_available) {
+  paste0("| pct_reads_in_peaks (FRiP) | >= ", opt$`min-pct-reads-in-peaks`, " |\n")
+} else {
+  "| pct_reads_in_peaks (FRiP) | not computed (--per-barcode-metrics not supplied) |\n"
+}
+
+# Per-criterion failure rows for the markdown table
+fail_rows <- paste0(
+  "| ", names(fail_counts), " | ", fail_counts, " |\n",
+  collapse = ""
+)
 
 qc_md <- paste0(
   "# Multiome QC Summary\n\n",
@@ -364,7 +540,12 @@ qc_md <- paste0(
   "| Raw RNA barcodes | ", fmt_int(n_cells_raw), " |\n",
   "| Shared RNA+ATAC barcodes (pre-QC) | ", fmt_int(n_cells_shared), " |\n",
   "| Pass QC | ", fmt_int(n_pass), " |\n",
-  "| Removed by QC | ", fmt_int(n_cells_shared - n_pass), " |\n\n",
+  "| Fail QC (removed) | ", fmt_int(n_cells_shared - n_pass), " |\n\n",
+
+  "## Cells failing each QC criterion\n\n",
+  "| Criterion | Cells failing |\n",
+  "|-----------|---------------|\n",
+  fail_rows, "\n",
 
   "## QC thresholds applied\n\n",
   "| Metric | Threshold |\n",
@@ -373,9 +554,10 @@ qc_md <- paste0(
   "| nCount_RNA | ", opt$`min-count-rna`, " – ", opt$`max-count-rna`, " |\n",
   "| percent_mt | < ", opt$`max-pct-mt`, " |\n",
   "| nCount_ATAC | ", opt$`min-count-atac`, " – ", opt$`max-count-atac`, " |\n",
-  "| TSS_enrichment | > ", opt$`min-tss`, " |\n",
+  "| TSS_enrichment | >= ", opt$`min-tss`, " |\n",
   "| nucleosome_signal | < ", opt$`max-nucleosome`, " |\n",
-  bl_line, "\n",
+  bl_line,
+  frip_line, "\n",
 
   "## Normalisation\n\n",
   "| Modality | Method |\n",
