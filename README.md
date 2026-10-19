@@ -44,7 +44,7 @@ The current analysis focuses on:
 - cell-specific RNA/ATAC modality weights
 - preservation of known PBMC cell populations after integration
 
-The main question is not whether the joint representation is automatically better, but whether it adds useful information while preserving known biological structure.
+The main question is whether the joint representation adds useful information while preserving known biological structure.
 
 ## Downstream analyses
 
@@ -55,7 +55,7 @@ The repository also contains exploratory analyses extending beyond WNN:
 - cross-modal comparison of RNA regulatory programs and ATAC motif activity
 - exploratory monocyte pseudotime analysis
 
-These analyses are interpreted as associations between transcriptional and chromatin-accessibility signals rather than evidence of causal regulation.
+These analyses are interpreted as associations between transcriptional and chromatin-accessibility signals; not evidence of causal regulation.
 
 ## Workflow
 
@@ -95,7 +95,7 @@ Large raw and processed data files are not committed.
 
 Integration quality is evaluated by checking whether known biological structure is preserved across RNA, ATAC, and WNN representations.
 
-Important limitations include the sparsity of both modalities, sensitivity of ATAC analysis to sequencing depth and QC, and the fact that open chromatin represents regulatory potential rather than direct evidence of gene regulation.
+Important limitations include the sparsity of both modalities, sensitivity of ATAC analysis to sequencing depth and QC, and regulatory potential of open chromatin.
 
 ## Repository structure
 
