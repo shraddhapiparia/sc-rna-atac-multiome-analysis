@@ -1,153 +1,116 @@
 # sc-rna-atac-regulon-benchmark
 
-A reproducible single-cell multiome project extending an RNA-only immune cell-state benchmark into paired RNA+ATAC integration, regulatory program analysis, and optional pseudotime exploration.
+Single-cell RNA + ATAC analysis of paired 10x Genomics PBMC Multiome data using Seurat and Signac.
 
-This repository uses the 10x PBMC Multiome dataset to demonstrate RNA/ATAC quality control, Seurat/Signac preprocessing, WNN integration, RNA-derived TF activity proxy analysis, ATAC motif validation with chromVAR, and monocyte pseudotime analysis.
+The project focuses on understanding how transcriptomic and chromatin-accessibility information can be analyzed independently and combined using Weighted Nearest Neighbor (WNN) integration.
 
-## Why this project matters
+## Biological motivation
 
-Single-cell RNA-seq identifies transcriptional cell states, while ATAC-seq adds chromatin accessibility context. This project compares RNA-defined immune programs with ATAC-derived regulatory signals in a shared-cell multiome workflow.
+scRNA-seq measures the transcriptional state of a cell, while scATAC-seq measures regions of accessible chromatin that may support regulatory activity.
 
-The emphasis is on reproducible computational biology, transparent QC, and careful interpretation rather than overclaiming biological discovery.
+These modalities provide complementary information: chromatin accessibility can indicate regulatory potential, but accessibility alone does not imply transcription. Joint analysis can therefore provide additional context for interpreting cell identity and regulatory state.
 
-## What this repo demonstrates
+## Analysis workflow
 
-- Paired RNA+ATAC preprocessing and multimodal QC
-- WNN integration for joint RNA+ATAC cell-state recovery
-- Comparison against an RNA-only single-cell benchmark
-- RNA-derived TF activity proxy analysis across immune populations
-- ATAC motif enrichment using JASPAR/chromVAR
-- Cross-modal RNA-vs-ATAC regulatory program comparison
-- Optional monocyte pseudotime analysis using Slingshot
-- Python/R package structure with tests and environment files
+For the paired multiome data, RNA and ATAC are first processed separately:
 
-## Key results
+```text
+RNA counts                         ATAC peak counts
+    │                                    │
+SCTransform                              TF-IDF
+    │                                    │
+   PCA                                  LSI
+    │                                    │
+    └────────────── WNN ─────────────────┘
+                       │
+                 WNN graph
+                       │
+              clustering + UMAP
+```
 
-- Recovered 7 of 8 broad RNA-defined immune populations after WNN label harmonization.
-- Identified expected immune regulatory patterns:
-  - antigen presentation in dendritic cells and B cells
-  - cytotoxic programs in NK and CD8 T cells
-  - inflammatory and monocyte-activation programs in monocytes
-- Added traceable multimodal QC outputs with one failure flag per active QC criterion.
-- Used ATAC motif deviations to independently evaluate RNA-derived TF activity proxies.
-- Built pseudotime-ready monocyte outputs for linking chromatin accessibility with regulatory dynamics.
+WNN combines the modality-specific cell representations by learning how informative RNA and ATAC are for the neighborhood of each cell, rather than concatenating genes and peaks into a single feature matrix.
 
-## Workflow overview
+For ATAC, the first LSI dimension is excluded from WNN because it is often strongly associated with sequencing depth.
 
-| Phase | Goal | Main scripts |
+## What this repository evaluates
+
+The current analysis focuses on:
+
+- RNA and ATAC quality control performed separately before integration
+- RNA representation using PCA
+- ATAC representation using TF-IDF and LSI
+- WNN integration of the paired modalities
+- comparison of RNA-only, ATAC-only, and WNN cell representations
+- cell-specific RNA/ATAC modality weights
+- preservation of known PBMC cell populations after integration
+
+The main question is not whether the joint representation is automatically better, but whether it adds useful information while preserving known biological structure.
+
+## Downstream analyses
+
+The repository also contains exploratory analyses extending beyond WNN:
+
+- RNA-derived transcription-factor program scores
+- ATAC motif accessibility using chromVAR
+- cross-modal comparison of RNA regulatory programs and ATAC motif activity
+- exploratory monocyte pseudotime analysis
+
+These analyses are interpreted as associations between transcriptional and chromatin-accessibility signals rather than evidence of causal regulation.
+
+## Workflow
+
+| Step | Analysis | Main script |
 |---|---|---|
-| 1 | Import RNA-only baseline outputs | scripts/01_import_rna_baseline.py |
-| 2 | Preprocess RNA+ATAC multiome data | scripts/03_preprocess_multiome.R |
-| 2 | Plot QC and optional doublet/fragment QC | scripts/03b_plot_qc.R, scripts/03c_doublet_qc.R, scripts/03d_plot_atac_fragment_qc.R |
-| 2 | Run WNN integration | scripts/04_integrate_rna_atac_wnn.R |
-| 3 | Compare RNA and WNN cell labels | scripts/05_compare_rna_vs_wnn.py |
-| 3 | Compute and plot TF activity proxies | scripts/06_tf_activity.py, scripts/07_plot_tf_activity.py |
-| 4 | Run ATAC motif enrichment | scripts/08_motif_enrichment_atac.R |
-| 4 | Compare RNA and ATAC TF signals | scripts/09_compare_rna_atac_tf.py |
-| 5 | Run monocyte pseudotime analysis | scripts/10_pseudotime_subset.R, scripts/11_plot_pseudotime.py |
+| 1 | Import RNA reference outputs | `scripts/01_import_rna_baseline.py` |
+| 2 | Prepare multiome data | `scripts/02_download_or_prepare_multiome.R` |
+| 3 | RNA + ATAC preprocessing and QC | `scripts/03_preprocess_multiome.R` |
+| 4 | WNN integration | `scripts/04_integrate_rna_atac_wnn.R` |
+| 5 | RNA vs WNN comparison | `scripts/05_compare_rna_vs_wnn.py` |
+| 6 | RNA TF program analysis | `scripts/06_tf_activity.py` |
+| 7 | ATAC motif analysis | `scripts/08_motif_enrichment_atac.R` |
+| 8 | Cross-modal TF comparison | `scripts/09_compare_rna_atac_tf.py` |
+| 9 | Monocyte pseudotime | `scripts/10_pseudotime_subset.R` |
 
 ## Quick start
 
-Create the environment:
+```bash
+mamba env create -f environment.yml
+conda activate sc-rna-atac
 
-    mamba env create -f environment.yml
-    conda activate sc-rna-atac
-
-Install the Python package in editable mode:
-
-    pip install -e .
-
-Run tests:
-
-    pytest
-
-Run the main workflow:
-
-    python scripts/01_import_rna_baseline.py
-    Rscript scripts/02_download_or_prepare_multiome.R --download
-    Rscript scripts/03_preprocess_multiome.R
-    Rscript scripts/03b_plot_qc.R
-    Rscript scripts/04_integrate_rna_atac_wnn.R --cluster-annotations results/integration/cluster_annotations.tsv
-    python scripts/05_compare_rna_vs_wnn.py --label-map results/comparison/wnn_to_broad_labels.tsv
-    python scripts/06_tf_activity.py
-    python scripts/07_plot_tf_activity.py
-    Rscript scripts/08_motif_enrichment_atac.R
-    python scripts/09_compare_rna_atac_tf.py
-    Rscript scripts/10_pseudotime_subset.R
-    python scripts/11_plot_pseudotime.py
-
-Optional QC scripts:
-
-    Rscript scripts/03c_doublet_qc.R
-    Rscript scripts/03d_plot_atac_fragment_qc.R
+Rscript scripts/02_download_or_prepare_multiome.R --download
+Rscript scripts/03_preprocess_multiome.R
+Rscript scripts/04_integrate_rna_atac_wnn.R
+```
 
 ## Data
 
-This project uses:
+The project uses:
 
-- RNA-only baseline outputs from the companion sc-cell-state-benchmark repository
-- 10x Genomics PBMC Multiome RNA+ATAC data
+- 10x Genomics PBMC Multiome paired RNA + ATAC data
+- RNA-only reference outputs from the companion `sc-cell-state-benchmark` repository
 
-Expected input locations:
+Large raw and processed data files are not committed.
 
-| Path | Purpose |
-|---|---|
-| data/external/ | RNA-only baseline score tables |
-| data/raw/ | raw 10x multiome files |
-| data/processed/ | processed Seurat objects |
+## Interpretation
 
-Large raw and processed data files are not intended to be committed.
+Integration quality is evaluated by checking whether known biological structure is preserved across RNA, ATAC, and WNN representations.
 
-## Main outputs
-
-| Directory | Contents |
-|---|---|
-| results/baseline/ | standardized RNA-only baseline outputs |
-| results/integration/ | QC summaries, WNN metadata, integration outputs |
-| results/regulons/ | TF activity and ATAC motif summaries |
-| results/comparison/ | RNA-vs-WNN and RNA-vs-ATAC comparison tables |
-| results/dynamics/ | monocyte pseudotime outputs |
-| results/figures/ | QC, TF activity, motif, and pseudotime plots |
-
-## Method summary
-
-RNA preprocessing uses SCTransform with mitochondrial percentage regression. ATAC preprocessing uses TF-IDF and LSI. Joint RNA+ATAC structure is modeled using WNN integration.
-
-Regulatory analysis is intentionally lightweight and interpretable. RNA program scores are used as TF activity proxies, then compared against ATAC motif deviation scores from chromVAR. This provides a cross-modal regulatory consistency check without claiming full GRN reconstruction.
-
-## Interpretation notes
-
-This is a portfolio and methods-development repository, not a clinically validated biological study.
-
-The TF analysis should be interpreted as regulatory program scoring and motif-based validation, not full causal regulon inference. Pseudotime analysis is exploratory and currently focused on monocyte-lineage cells.
-
-## Environment notes
-
-The full project environment is defined in environment.yml and includes Python 3.11, R 4.4, Seurat, Signac, chromVAR, Slingshot-related dependencies, and Bioconductor packages.
-
-pyproject.toml defines the Python package metadata, dependencies, and test configuration.
-
-renv.lock records the R package state used during development.
-
-For detailed installation notes, troubleshooting, and R/Bioconductor caveats, see docs/setup.md.
+Important limitations include the sparsity of both modalities, sensitivity of ATAC analysis to sequencing depth and QC, and the fact that open chromatin represents regulatory potential rather than direct evidence of gene regulation.
 
 ## Repository structure
 
-    sc-rna-atac-regulon-benchmark/
-    ├── README.md
-    ├── environment.yml
-    ├── pyproject.toml
-    ├── renv.lock
-    ├── data/
-    ├── docs/
-    ├── results/
-    ├── scripts/
-    ├── src/sc_rna_atac_regulon_benchmark/
-    └── tests/
-
-## Related repository
-
-This project builds on the RNA-only sc-cell-state-benchmark repository, which provides baseline immune cell-state outputs used here for multimodal comparison.
+```text
+sc-rna-atac-regulon-benchmark/
+├── data/
+├── docs/
+├── results/
+├── scripts/
+├── src/
+├── tests/
+├── environment.yml
+├── pyproject.toml
+└── renv.lock
+```
 
 ## License
 
