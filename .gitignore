@@ -29,3 +29,5 @@ renv/
 *.log
 data/
 .Rprofile
+Rplots.pdf
+Rplots.pdf
